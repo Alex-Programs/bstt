@@ -229,50 +229,70 @@ fn compress_location(location: &str) -> String {
     apply_transformations(location.to_string(), &rules)
 }
 
-// --- Mini-Mode Display (Unchanged) ---
+// --- Mini-Mode Display (MODIFIED) ---
 fn display_mini_timetable(events_data: ApiResponse) {
     let now = Local::now();
     let today = now.date_naive();
-    let mut upcoming_events: Vec<Event> = events_data.events.into_iter().filter(|event| {
-        if let Ok(end_time) = DateTime::parse_from_rfc3339(&event.end) {
-            let local_end = end_time.with_timezone(&Local);
-            local_end > now && local_end.date_naive() == today
+
+    // Get all of today's events and sort them.
+    let mut todays_events: Vec<Event> = events_data.events.into_iter().filter(|event| {
+        if let Ok(start_time) = DateTime::parse_from_rfc3339(&event.start) {
+            start_time.with_timezone(&Local).date_naive() == today
         } else { false }
     }).collect();
-    upcoming_events.sort_by(|a, b| a.start.cmp(&b.start));
-    let current_event = upcoming_events.iter().find(|&event| {
+    todays_events.sort_by(|a, b| a.start.cmp(&b.start));
+
+    // Find the current event.
+    let current_event = todays_events.iter().find(|&event| {
         let start_time = DateTime::parse_from_rfc3339(&event.start).unwrap().with_timezone(&Local);
         let end_time = DateTime::parse_from_rfc3339(&event.end).unwrap().with_timezone(&Local);
         now >= start_time && now < end_time
     });
-    let next_event = upcoming_events.iter().find(|&event| {
+
+    // Find the next upcoming event.
+    let next_event = todays_events.iter().find(|&event| {
         let start_time = DateTime::parse_from_rfc3339(&event.start).unwrap().with_timezone(&Local);
         start_time > now
     });
-    match (current_event, next_event) {
-        (Some(current), Some(next)) => {
+
+    if let Some(current) = current_event {
+        // A class is currently in progress.
+        let end_time = DateTime::parse_from_rfc3339(&current.end).unwrap().with_timezone(&Local);
+        let border_time = end_time - Duration::minutes(10);
+        
+        // Check if we are in the 10-minute "border" window before the end.
+        if now >= border_time {
+            if let Some(next) = next_event {
+                // We are in the border and there is another class today.
+                let current_end_str = end_time.format("%H:%M");
+                let next_start_str = DateTime::parse_from_rfc3339(&next.start).unwrap().with_timezone(&Local).format("%H:%M");
+                let next_title = compress_title(&next.title);
+                let next_loc = compress_location(&next.location);
+                print!("BRD {}→{} | {} @ {}", current_end_str, next_start_str, next_title, next_loc);
+            } else {
+                // In the border, but it's the last class of the day. Treat as a normal current class.
+                let current_title = compress_title(&current.title);
+                let current_loc = compress_location(&current.location);
+                print!("CUR {} | {} END {}", current_title, current_loc, end_time.format("%H:%M"));
+            }
+        } else {
+            // Not in the border window yet. Just show the current class.
             let current_title = compress_title(&current.title);
             let current_loc = compress_location(&current.location);
-            let next_title = compress_title(&next.title);
-            let next_loc = compress_location(&next.location);
-            let next_start = DateTime::parse_from_rfc3339(&next.start).unwrap().with_timezone(&Local);
-            print!("CUR {} | {}  ->  NXT {} | {} @ {}", current_title, current_loc, next_title, next_loc, next_start.format("%H:%M"));
+            print!("CUR {} | {} END {}", current_title, current_loc, end_time.format("%H:%M"));
         }
-        (Some(current), None) => {
-            let current_title = compress_title(&current.title);
-            let current_loc = compress_location(&current.location);
-            let current_end = DateTime::parse_from_rfc3339(&current.end).unwrap().with_timezone(&Local);
-            print!("CUR {} | {} END {}", current_title, current_loc, current_end.format("%H:%M"));
-        }
-        (None, Some(next)) => {
-            let next_title = compress_title(&next.title);
-            let next_loc = compress_location(&next.location);
-            let next_start = DateTime::parse_from_rfc3339(&next.start).unwrap().with_timezone(&Local);
-            print!("NXT {} | {} @ {}", next_title, next_loc, next_start.format("%H:%M"));
-        }
-        (None, None) => { print!("TTB: BLK"); }
+    } else if let Some(next) = next_event {
+        // No current class, but there is a next one today.
+        let next_title = compress_title(&next.title);
+        let next_loc = compress_location(&next.location);
+        let next_start = DateTime::parse_from_rfc3339(&next.start).unwrap().with_timezone(&Local);
+        print!("NXT {} | {} @ {}", next_title, next_loc, next_start.format("%H:%M"));
+    } else {
+        // No current or upcoming classes for the rest of the day.
+        print!("TTB: BLK");
     }
 }
+
 
 // --- Main Execution ---
 fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
