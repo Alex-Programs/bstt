@@ -1,0 +1,18 @@
+[package]
+name = "bstt"
+version = "0.1.0"
+edition = "2021"
+authors = ["Alex Chambers-Jones"]
+description = "A fast, simple CLI tool to display the University of Bristol timetable."
+license = "GPL-3.0-or-later"
+
+[dependencies]
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.9"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.5", features = ["derive"] }
+comfy-table = "7.1"
+colored = "3"
+indicatif = "0.18"
